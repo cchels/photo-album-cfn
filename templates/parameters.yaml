@@ -1,13 +1,13 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: All global parameters for the Photo Album stack.
+Description: CFN parameter file
 
 Parameters:
   ESDomainEndpoint:
     Type: String
-    Description: "Your existing OpenSearch domain endpoint"
+    Description: HTTPS endpoint of your existing OpenSearch domain
     Default: "https://search-photos-2kdopq4li5ts2w6mcaqobflreu.us-east-1.es.amazonaws.com"
 
   ESDomainArn:
     Type: String
-    Description: "ARN of your existing OpenSearch domain, with /* suffix"
+    Description: ARN of your existing OpenSearch domain (with /*)
     Default: "arn:aws:es:us-east-1:825765411228:domain/photos/*"

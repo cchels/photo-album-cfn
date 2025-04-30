@@ -1,0 +1,56 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  cfn-PhotoAlbum OpenSearch Domain “photos”, secured and ready for indexing.
+
+Resources:
+  cfn-PhotoSearchDomain:
+    Type: AWS::OpenSearchService::Domain
+    Properties:
+      DomainName: photos
+      EngineVersion: OpenSearch_2.17
+      ClusterConfig:
+        InstanceType: t3.small.search
+        InstanceCount: 1
+      EBSOptions:
+        EBSEnabled: true
+        VolumeSize: 10
+        VolumeType: gp3
+      EncryptionAtRestOptions:
+        Enabled: true
+      NodeToNodeEncryptionOptions:
+        Enabled: true
+      DomainEndpointOptions:
+        EnforceHTTPS: true
+        TLSSecurityPolicy: TLS_1_2
+      AdvancedSecurityOptions:
+        Enabled: true
+        InternalUserDatabaseEnabled: true
+        MasterUserOptions:
+          MasterUserName: admin
+          MasterUserPassword: !Ref MasterUserPassword
+      AccessPolicies:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: "*"
+            Action: es:ESHttp*
+            Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/photos/*
+
+Parameters:
+  MasterUserPassword:
+    Type: String
+    Description: Password for ES master user “admin”
+    NoEcho: true
+
+Outputs:
+  cfn-ESDomainEndpoint:
+    Description: HTTPS endpoint for “photos”
+    Value: !GetAtt cfn-PhotoSearchDomain.DomainEndpoint
+    Export:
+      Name: cfn-PhotoAlbum-ESDomainEndpoint
+
+  cfn-ESDomainArn:
+    Description: ARN (with wildcard) of “photos”
+    Value: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/photos/*
+    Export:
+      Name: cfn-PhotoAlbum-ESDomainArn

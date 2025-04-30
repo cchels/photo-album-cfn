@@ -1,28 +1,25 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: >-
-  Grant S3 and API Gateway permission to invoke your Lambdas.
-  (Notifications themselves you’ve already wired in the console.)
+Description: Lambda invoke permissions
 
 Parameters:
-  ApiId:
+  cfn-ApiId:
     Type: String
-    Description: REST API ID (imported from api-gateway.yaml)
 
 Resources:
-  # Allow S3 -> index-photos
-  PermissionIndexFromS3:
+# Allow S3 -> index-photos
+  cfn-PermissionIndexFromS3:
     Type: AWS::Lambda::Permission
     Properties:
-      FunctionName: !ImportValue PhotoAlbum-IndexFunctionArn
+      FunctionName: !ImportValue cfn-PhotoAlbum-IndexFunctionArn
       Action: lambda:InvokeFunction
       Principal: s3.amazonaws.com
-      SourceArn: !Sub arn:aws:s3:::${PhotoAlbum-PhotoBucketName}
-
+      SourceArn: !Sub arn:aws:s3:::${cfn-PhotoAlbum-PhotoBucketName}
+      
   # Allow API Gateway -> search-photos
-  PermissionSearchFromApi:
+  cfn-PermissionSearchFromApi:
     Type: AWS::Lambda::Permission
     Properties:
-      FunctionName: !ImportValue PhotoAlbum-SearchFunctionArn
+      FunctionName: !ImportValue cfn-PhotoAlbum-SearchFunctionArn
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiId}/*/GET/search
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${cfn-ApiId}/*/GET/search

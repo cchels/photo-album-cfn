@@ -1,39 +1,84 @@
 set -euo pipefail
 
-echo "Deploying parameters (no stack, just used for guidance)"
+echo "1) Deploying OpenSearch domain…"
+aws cloudformation deploy \
+  --template-file templates/opensearch-domain.yaml \
+  --stack-name cfn-photoalbum-opensearch \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --parameter-overrides MasterUserPassword=Test1234!
 
-echo "Deploying S3 buckets..."
+echo "OpenSearch ready"
+
+echo "2) Deploying S3 buckets with cfn- prefix…"
 aws cloudformation deploy \
   --template-file templates/s3-buckets.yaml \
-  --stack-name photoalbum-s3
+  --stack-name cfn-photoalbum-s3 \
+  --parameter-overrides \
+    PhotoBucketSuffix=my-photo-bucket-hw3 \
+    FrontendBucketSuffix=my-frontend-bucket-hw3
 
-echo "Deploying IAM roles..."
+echo "S3 buckets created"
+
+echo "3) Deploying IAM roles…"
+ES_DOMAIN_ARN=$(aws cloudformation describe-stacks \
+  --stack-name cfn-photoalbum-opensearch \
+  --query 'Stacks[0].Outputs[?OutputKey==`cfn-ESDomainArn`].OutputValue' \
+  --output text)
+
 aws cloudformation deploy \
   --template-file templates/iam-roles.yaml \
-  --stack-name photoalbum-iam \
+  --stack-name cfn-photoalbum-iam \
   --capabilities CAPABILITY_NAMED_IAM \
-  --parameter-overrides ESDomainArn="arn:aws:es:us-east-1:825765411228:domain/photos/*"
+  --parameter-overrides cfn-ESDomainArn="${ES_DOMAIN_ARN}"
 
-echo "Deploying Lambda functions..."
+echo "IAM roles ready"
+
+echo "4) Deploying Lambda functions…"
+ES_DOMAIN_ENDPOINT=$(aws cloudformation describe-stacks \
+  --stack-name cfn-photoalbum-opensearch \
+  --query 'Stacks[0].Outputs[?OutputKey==`cfn-ESDomainEndpoint`].OutputValue' \
+  --output text)
+
 aws cloudformation deploy \
   --template-file templates/lambda-functions.yaml \
-  --stack-name photoalbum-lambda \
+  --stack-name cfn-photoalbum-lambda \
   --capabilities CAPABILITY_NAMED_IAM \
-  --parameter-overrides ESDomainEndpoint="https://search-photos-2kdopq4li5ts2w6mcaqobflreu.us-east-1.es.amazonaws.com"
+  --parameter-overrides ESDomainEndpoint="${ES_DOMAIN_ENDPOINT}"
 
-echo "Deploying API Gateway..."
+echo "Lambdas deployed"
+
+echo "5) Deploying API Gateway…"
 aws cloudformation deploy \
   --template-file templates/api-gateway.yaml \
-  --stack-name photoalbum-api \
+  --stack-name cfn-photoalbum-api \
   --capabilities CAPABILITY_NAMED_IAM
 
-echo "Deploying Lambda invoke permissions..."
+echo "API Gateway deployed"
+
+echo "6) Deploying Lambda invoke permissions…"
+API_ID=$(aws cloudformation describe-stacks \
+  --stack-name cfn-photoalbum-api \
+  --query 'Stacks[0].Outputs[?OutputKey==`cfn-ApiId`].OutputValue' \
+  --output text)
+
 aws cloudformation deploy \
   --template-file templates/triggers.yaml \
-  --stack-name photoalbum-triggers \
+  --stack-name cfn-photoalbum-triggers \
   --capabilities CAPABILITY_NAMED_IAM \
-  --parameter-overrides ApiId="$(aws cloudformation describe-stacks --stack-name photoalbum-api --query 'Stacks[0].Outputs[?OutputKey==\`ApiId\`].OutputValue' --output text)"
+  --parameter-overrides cfn-ApiId="${API_ID}"
 
-echo ""
-echo "Frontend website: $(aws cloudformation describe-stacks --stack-name photoalbum-s3 --query 'Stacks[0].Outputs[?OutputKey==\`FrontendWebsiteURL\`].OutputValue' --output text)"
-echo "API base URL:    $(aws cloudformation describe-stacks --stack-name photoalbum-api --query 'Stacks[0].Outputs[?OutputKey==\`ApiUrl\`].OutputValue' --output text)"
+echo "Permissions wired up"
+
+echo
+echo "Photo bucket name: $(aws cloudformation describe-stacks \
+  --stack-name cfn-photoalbum-s3 \
+  --query 'Stacks[0].Outputs[?OutputKey==`cfn-PhotoBucketName`].OutputValue' \
+  --output text)"
+echo "Frontend URL:      $(aws cloudformation describe-stacks \
+  --stack-name cfn-photoalbum-s3 \
+  --query 'Stacks[0].Outputs[?OutputKey==`cfn-FrontendWebsiteURL`].OutputValue' \
+  --output text)"
+echo "API URL:           $(aws cloudformation describe-stacks \
+  --stack-name cfn-photoalbum-api \
+  --query 'Stacks[0].Outputs[?OutputKey==`cfn-ApiUrl`].OutputValue' \
+  --output text)"

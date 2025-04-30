@@ -1,14 +1,20 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: >
-  Two S3 buckets:
-    • my-photo-bucket-hw3   Photo storage (private)
-    • my-frontend-bucket-hw3 Frontend website (public)
+Description: S3 buckets: photo storage & frontend hosting.
 
+Parameters:
+  PhotoBucketSuffix:
+    Type: String
+    Default: "my-photo-bucket-hw3"
+
+  FrontendBucketSuffix:
+    Type: String
+    Default: "my-frontend-bucket-hw3"
+    
 Resources:
-  PhotoStorageBucket:
+  cfn-PhotoStorageBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: my-photo-bucket-hw3
+      BucketName: !Sub "cfn-${PhotoBucketSuffix}"
       VersioningConfiguration: { Status: Enabled }
       BucketEncryption:
         ServerSideEncryptionConfiguration:
@@ -19,10 +25,10 @@ Resources:
         BlockPublicPolicy: true
         RestrictPublicBuckets: true
 
-  FrontendBucket:
+  cfn-FrontendBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: my-frontend-bucket-hw3
+      BucketName: !Sub "cfn-${FrontendBucketSuffix}"
       WebsiteConfiguration:
         IndexDocument: index.html
         ErrorDocument:  error.html
@@ -35,10 +41,10 @@ Resources:
         BlockPublicPolicy: false
         RestrictPublicBuckets: false
 
-  FrontendBucketPolicy:
+  cfn-FrontendBucketPolicy:
     Type: AWS::S3::BucketPolicy
     Properties:
-      Bucket: !Ref FrontendBucket
+      Bucket: !Ref cfn-FrontendBucket
       PolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -46,14 +52,13 @@ Resources:
             Effect: Allow
             Principal: '*'
             Action: s3:GetObject
-            Resource: !Sub '${FrontendBucket}/*'
+            Resource: !Sub '${cfn-FrontendBucket}/*'
 
 Outputs:
-  PhotoBucketName:
-    Description: Photo storage bucket
-    Value: !Ref PhotoStorageBucket
-    Export: { Name: PhotoAlbum-PhotoBucketName }
+  cfn-PhotoBucketName:
+    Value: !Ref cfn-PhotoStorageBucket
+    Export: { Name: cfn-PhotoAlbum-PhotoBucketName }
 
-  FrontendWebsiteURL:
-    Description: Public URL of frontend
-    Value: !GetAtt FrontendBucket.WebsiteURL
+  cfn-FrontendWebsiteURL:
+    Value: !GetAtt cfn-FrontendBucket.WebsiteURL
+    Export: { Name: cfn-PhotoAlbum-FrontendWebsiteURL }
