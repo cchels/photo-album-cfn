@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Search-Photos Lambda
 Invoked by API Gateway GET /search?q=…

@@ -1,13 +1,11 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >
-  REST API for photo upload & search
-  • PUT /upload?filename=…  → S3 proxy
-  • OPTIONS /upload        → CORS preflight
-  • GET /search?q=…        → Lambda proxy
-  • OPTIONS /search        → CORS preflight
+  API Gateway:
+    • PUT  /upload?filename=… → S3 proxy (binary media, CORS)
+    • GET  /search?q=…       → Lambda proxy + CORS
+    • OPTIONS on both for preflight
 
 Resources:
-  # ── The API itself, with your four binary media types ─────────────────────
   PhotoApi:
     Type: AWS::ApiGateway::RestApi
     Properties:
@@ -18,7 +16,7 @@ Resources:
         - 'image/jpeg'
         - 'image/heic'
 
-  # ── /upload resource ───────────────────────────────────────────────────────
+  ## ── /upload ─────────────────────────────────────────────────────────────
   UploadResource:
     Type: AWS::ApiGateway::Resource
     Properties:
@@ -26,7 +24,6 @@ Resources:
       ParentId: !GetAtt PhotoApi.RootResourceId
       PathPart: upload
 
-  # PUT /upload?filename=…  → S3 proxy integration
   PutUploadMethod:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -34,13 +31,10 @@ Resources:
       ResourceId: !Ref UploadResource
       HttpMethod: PUT
       AuthorizationType: NONE
-
-      # 1) Require filename query-string, Content-Type header & allow customLabels
       RequestParameters:
-        method.request.querystring.filename: true
-        method.request.header.Content-Type: true
+        method.request.querystring.filename:           true
+        method.request.header.Content-Type:            true
         method.request.header.x-amz-meta-customLabels: false
-
       Integration:
         Type: AWS
         IntegrationHttpMethod: PUT
@@ -48,14 +42,11 @@ Resources:
           arn:aws:apigateway:${AWS::Region}:s3:path/${PhotoAlbum-PhotoBucketName}/{objectKey}
         Credentials: !ImportValue PhotoAlbum-ApiGatewayS3RoleArn
         PassthroughBehavior: WHEN_NO_TEMPLATES
-
-        # 2) Map filename → {objectKey}, headers → S3 headers
         RequestParameters:
-          integration.request.path.objectKey:    'method.request.querystring.filename'
-          integration.request.header.Content-Type:               'method.request.header.Content-Type'
-          integration.request.header.x-amz-meta-customLabels:    'method.request.header.x-amz-meta-customLabels'
+          integration.request.path.objectKey:              'method.request.querystring.filename'
+          integration.request.header.Content-Type:         'method.request.header.Content-Type'
+          integration.request.header.x-amz-meta-customLabels: 'method.request.header.x-amz-meta-customLabels'
 
-  # OPTIONS /upload  → Mock for CORS preflight
   OptionsUpload:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -72,15 +63,15 @@ Resources:
             ResponseParameters:
               method.response.header.Access-Control-Allow-Headers: "'Content-Type,x-amz-meta-customLabels'"
               method.response.header.Access-Control-Allow-Methods: "'PUT,OPTIONS'"
-              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Origin:  "'*'"
       MethodResponses:
         - StatusCode: 200
           ResponseParameters:
             method.response.header.Access-Control-Allow-Headers: true
             method.response.header.Access-Control-Allow-Methods: true
-            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Origin:  true
 
-  # ── /search resource ───────────────────────────────────────────────────────
+  ## ── /search ─────────────────────────────────────────────────────────────
   SearchResource:
     Type: AWS::ApiGateway::Resource
     Properties:
@@ -88,7 +79,6 @@ Resources:
       ParentId: !GetAtt PhotoApi.RootResourceId
       PathPart: search
 
-  # GET /search?q=… → Lambda proxy integration
   GetSearch:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -102,7 +92,6 @@ Resources:
         Uri: !Sub >
           arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${SearchFunctionArn}/invocations
 
-  # OPTIONS /search → Mock for CORS preflight
   OptionsSearch:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -119,15 +108,15 @@ Resources:
             ResponseParameters:
               method.response.header.Access-Control-Allow-Headers: "'Content-Type'"
               method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
-              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Origin:  "'*'"
       MethodResponses:
         - StatusCode: 200
           ResponseParameters:
             method.response.header.Access-Control-Allow-Headers: true
             method.response.header.Access-Control-Allow-Methods: true
-            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Origin:  true
 
-  # ── Permission so API Gateway can invoke the search Lambda ────────────────
+  ## ── Lambda permission for API Gateway to invoke search-photos ─────────
   PermissionSearchInvoke:
     Type: AWS::Lambda::Permission
     Properties:
@@ -136,19 +125,11 @@ Resources:
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${PhotoApi}/*/GET/search
 
-  # ── Deploy everything to prod ───────────────────────────────────────────────
-  PhotoApiDeployment:
-    Type: AWS::ApiGateway::Deployment
-    Properties:
-      RestApiId: !Ref PhotoApi
-      StageName: prod
-    DependsOn:
-      - PutUploadMethod
-      - OptionsUpload
-      - GetSearch
-      - OptionsSearch
-
 Outputs:
   ApiUrl:
-    Description: API base URL
+    Description: Base URL of your REST API
     Value: !Sub 'https://${PhotoApi}.execute-api.${AWS::Region}.amazonaws.com/prod'
+  ApiId:
+    Description: REST API identifier
+    Value: !Ref PhotoApi
+    Export: { Name: PhotoAlbum-ApiId }

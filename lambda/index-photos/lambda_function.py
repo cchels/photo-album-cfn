@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Index-Photos Lambda
 Triggered by S3 PUT events on the photo-storage bucket.
@@ -18,10 +16,6 @@ import requests
 from requests.auth import HTTPBasicAuth
 
 # ─── Environment Variables ─────────────────────────────────────────────
-# REGION: AWS region for clients (same as buckets & OpenSearch)
-# ES_ENDPOINT: full HTTPS URL of your OpenSearch domain
-# ES_INDEX: name of the index (e.g. "photos")
-# ES_USERNAME / ES_PASSWORD: HTTP Basic Auth credentials for ES
 REGION      = os.environ['REGION']
 ES_ENDPOINT = os.environ['ES_ENDPOINT']
 ES_INDEX    = os.environ['ES_INDEX']

@@ -1,20 +1,18 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >
-  Create two S3 buckets:
-    • my-photo-bucket-hw3 (private, versioned, encrypted)
-    • my-frontend-bucket-hw3 (static website, public-read)
+  Two S3 buckets:
+    • my-photo-bucket-hw3   Photo storage (private)
+    • my-frontend-bucket-hw3 Frontend website (public)
 
 Resources:
   PhotoStorageBucket:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: my-photo-bucket-hw3
-      VersioningConfiguration:
-        Status: Enabled
+      VersioningConfiguration: { Status: Enabled }
       BucketEncryption:
         ServerSideEncryptionConfiguration:
-          - ServerSideEncryptionByDefault:
-              SSEAlgorithm: AES256
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         IgnorePublicAcls: true
@@ -30,12 +28,11 @@ Resources:
         ErrorDocument:  error.html
       BucketEncryption:
         ServerSideEncryptionConfiguration:
-          - ServerSideEncryptionByDefault:
-              SSEAlgorithm: AES256
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         IgnorePublicAcls: true
-        BlockPublicPolicy: false     # allow public policy
+        BlockPublicPolicy: false
         RestrictPublicBuckets: false
 
   FrontendBucketPolicy:
@@ -53,11 +50,10 @@ Resources:
 
 Outputs:
   PhotoBucketName:
-    Description: Photo storage bucket name
+    Description: Photo storage bucket
     Value: !Ref PhotoStorageBucket
-    Export:
-      Name: PhotoAlbum-PhotoBucketName
+    Export: { Name: PhotoAlbum-PhotoBucketName }
 
   FrontendWebsiteURL:
-    Description: Public URL for frontend website
+    Description: Public URL of frontend
     Value: !GetAtt FrontendBucket.WebsiteURL
