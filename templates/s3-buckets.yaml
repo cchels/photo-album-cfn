@@ -1,31 +1,31 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: S3 buckets: photo storage & frontend hosting.
+Description: S3 buckets: photo storage & frontend hosting
 
 Parameters:
   PhotoBucketSuffix:
     Type: String
-    Default: "my-photo-bucket-hw3"
-
+    Description: Suffix for photo bucket (e.g. "my-photo-bucket-hw3")
   FrontendBucketSuffix:
     Type: String
-    Default: "my-frontend-bucket-hw3"
-    
+    Description: Suffix for frontend bucket (e.g. "my-frontend-bucket-hw3")
+
 Resources:
-  cfn-PhotoStorageBucket:
+  cfnPhotoStorageBucket:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Sub "cfn-${PhotoBucketSuffix}"
-      VersioningConfiguration: { Status: Enabled }
+      VersioningConfiguration:
+        Status: Enabled
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
       PublicAccessBlockConfiguration:
-        BlockPublicAcls: true
-        IgnorePublicAcls: true
-        BlockPublicPolicy: true
+        BlockPublicAcls:       true
+        IgnorePublicAcls:      true
+        BlockPublicPolicy:     true
         RestrictPublicBuckets: true
 
-  cfn-FrontendBucket:
+  cfnFrontendBucket:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Sub "cfn-${FrontendBucketSuffix}"
@@ -36,15 +36,15 @@ Resources:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
       PublicAccessBlockConfiguration:
-        BlockPublicAcls: true
-        IgnorePublicAcls: true
-        BlockPublicPolicy: false
+        BlockPublicAcls:       true
+        IgnorePublicAcls:      true
+        BlockPublicPolicy:     false
         RestrictPublicBuckets: false
 
-  cfn-FrontendBucketPolicy:
+  cfnFrontendBucketPolicy:
     Type: AWS::S3::BucketPolicy
     Properties:
-      Bucket: !Ref cfn-FrontendBucket
+      Bucket: !Ref cfnFrontendBucket
       PolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -52,13 +52,17 @@ Resources:
             Effect: Allow
             Principal: '*'
             Action: s3:GetObject
-            Resource: !Sub '${cfn-FrontendBucket}/*'
+            Resource: !Sub '${cfnFrontendBucket}/*'
 
 Outputs:
-  cfn-PhotoBucketName:
-    Value: !Ref cfn-PhotoStorageBucket
-    Export: { Name: cfn-PhotoAlbum-PhotoBucketName }
+  cfnPhotoBucketName:
+    Description: Photo storage bucket name
+    Value: !Ref cfnPhotoStorageBucket
+    Export:
+      Name: cfn-PhotoAlbum-PhotoBucketName
 
-  cfn-FrontendWebsiteURL:
-    Value: !GetAtt cfn-FrontendBucket.WebsiteURL
-    Export: { Name: cfn-PhotoAlbum-FrontendWebsiteURL }
+  cfnFrontendWebsiteURL:
+    Description: Frontend website URL
+    Value: !GetAtt cfnFrontendBucket.WebsiteURL
+    Export:
+      Name: cfn-PhotoAlbum-FrontendWebsiteURL

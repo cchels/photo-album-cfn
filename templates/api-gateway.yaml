@@ -1,25 +1,29 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: cfn API GW for upload & search
+Description: cfn API Gateway for upload & search
 
 Resources:
-  cfn-PhotoApi:
+  cfnPhotoApi:
     Type: AWS::ApiGateway::RestApi
     Properties:
       Name: cfn-PhotoAlbumAPI
-      BinaryMediaTypes: ['image/png','image/jpg','image/jpeg','image/heic']
+      BinaryMediaTypes:
+        - image/png
+        - image/jpg
+        - image/jpeg
+        - image/heic
 
-  cfn-UploadResource:
+  cfnUploadResource:
     Type: AWS::ApiGateway::Resource
     Properties:
-      RestApiId: !Ref cfn-PhotoApi
-      ParentId: !GetAtt cfn-PhotoApi.RootResourceId
+      RestApiId: !Ref cfnPhotoApi
+      ParentId: !GetAtt cfnPhotoApi.RootResourceId
       PathPart: upload
 
-  cfn-PutUploadMethod:
+  cfnPutUploadMethod:
     Type: AWS::ApiGateway::Method
     Properties:
-      RestApiId: !Ref cfn-PhotoApi
-      ResourceId: !Ref cfn-UploadResource
+      RestApiId: !Ref cfnPhotoApi
+      ResourceId: !Ref cfnUploadResource
       HttpMethod: PUT
       AuthorizationType: NONE
       RequestParameters:
@@ -31,23 +35,24 @@ Resources:
         IntegrationHttpMethod: PUT
         Uri: !Sub >
           arn:aws:apigateway:${AWS::Region}:s3:path/${cfn-PhotoAlbum-PhotoBucketName}/{objectKey}
-        Credentials: !GetAtt cfn-ApiGatewayS3Role.Arn
+        Credentials: !GetAtt cfnApiGatewayS3Role.Arn
         PassthroughBehavior: WHEN_NO_TEMPLATES
         RequestParameters:
-          integration.request.path.objectKey:             'method.request.querystring.filename'
-          integration.request.header.Content-Type:        'method.request.header.Content-Type'
+          integration.request.path.objectKey:              'method.request.querystring.filename'
+          integration.request.header.Content-Type:         'method.request.header.Content-Type'
           integration.request.header.x-amz-meta-customLabels: 'method.request.header.x-amz-meta-customLabels'
 
-  cfn-OptionsUpload:
+  cfnOptionsUpload:
     Type: AWS::ApiGateway::Method
     Properties:
-      RestApiId: !Ref cfn-PhotoApi
-      ResourceId: !Ref cfn-UploadResource
+      RestApiId: !Ref cfnPhotoApi
+      ResourceId: !Ref cfnUploadResource
       HttpMethod: OPTIONS
       AuthorizationType: NONE
       Integration:
         Type: MOCK
-        RequestTemplates: { 'application/json': '{ "statusCode": 200 }' }
+        RequestTemplates:
+          application/json: '{ "statusCode": 200 }'
         IntegrationResponses:
           - StatusCode: 200
             ResponseParameters:
@@ -61,18 +66,18 @@ Resources:
             method.response.header.Access-Control-Allow-Methods: true
             method.response.header.Access-Control-Allow-Origin:  true
 
-  cfn-SearchResource:
+  cfnSearchResource:
     Type: AWS::ApiGateway::Resource
     Properties:
-      RestApiId: !Ref cfn-PhotoApi
-      ParentId: !GetAtt cfn-PhotoApi.RootResourceId
+      RestApiId: !Ref cfnPhotoApi
+      ParentId: !GetAtt cfnPhotoApi.RootResourceId
       PathPart: search
 
-  cfn-GetSearch:
+  cfnGetSearch:
     Type: AWS::ApiGateway::Method
     Properties:
-      RestApiId: !Ref cfn-PhotoApi
-      ResourceId: !Ref cfn-SearchResource
+      RestApiId: !Ref cfnPhotoApi
+      ResourceId: !Ref cfnSearchResource
       HttpMethod: GET
       AuthorizationType: NONE
       Integration:
@@ -81,16 +86,17 @@ Resources:
         Uri: !Sub >
           arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${cfn-PhotoAlbum-SearchFunctionArn}/invocations
 
-  cfn-OptionsSearch:
+  cfnOptionsSearch:
     Type: AWS::ApiGateway::Method
     Properties:
-      RestApiId: !Ref cfn-PhotoApi
-      ResourceId: !Ref cfn-SearchResource
+      RestApiId: !Ref cfnPhotoApi
+      ResourceId: !Ref cfnSearchResource
       HttpMethod: OPTIONS
       AuthorizationType: NONE
       Integration:
         Type: MOCK
-        RequestTemplates: { 'application/json': '{ "statusCode": 200 }' }
+        RequestTemplates:
+          application/json: '{ "statusCode": 200 }'
         IntegrationResponses:
           - StatusCode: 200
             ResponseParameters:
@@ -104,19 +110,23 @@ Resources:
             method.response.header.Access-Control-Allow-Methods: true
             method.response.header.Access-Control-Allow-Origin:  true
 
-  cfn-PermissionSearchInvoke:
+  cfnPermissionSearchInvoke:
     Type: AWS::Lambda::Permission
     Properties:
       FunctionName: !ImportValue cfn-PhotoAlbum-SearchFunctionArn
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${cfn-PhotoApi}/*/GET/search
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${cfnPhotoApi}/*/GET/search
 
 Outputs:
-  cfn-ApiUrl:
-    Value: !Sub 'https://${cfn-PhotoApi}.execute-api.${AWS::Region}.amazonaws.com/prod'
-    Export: { Name: cfn-PhotoAlbum-ApiUrl }
+  cfnApiUrl:
+    Description: Base URL of your API
+    Value: !Sub 'https://${cfnPhotoApi}.execute-api.${AWS::Region}.amazonaws.com/prod'
+    Export:
+      Name: cfn-PhotoAlbum-ApiUrl
 
-  cfn-ApiId:
-    Value: !Ref cfn-PhotoApi
-    Export: { Name: cfn-PhotoAlbum-ApiId }
+  cfnApiId:
+    Description: API identifier
+    Value: !Ref cfnPhotoApi
+    Export:
+      Name: cfn-PhotoAlbum-ApiId

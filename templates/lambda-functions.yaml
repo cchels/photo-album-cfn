@@ -1,17 +1,23 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: cfn PhotoAlbum Lambdas
+Description: cfn-index-photos & cfn-search-photos Lambda functions
+
+Parameters:
+  ESDomainEndpoint:
+    Type: String
+    Description: Exported OpenSearch endpoint
 
 Resources:
-  cfn-IndexPhotosFunction:
+  cfnIndexPhotosFunction:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: cfn-index-photos
       Runtime: python3.13
       Handler: lambda_function.lambda_handler
-      Role: !GetAtt cfn-IndexLambdaRole.Arn
+      Role: !GetAtt cfnIndexLambdaRole.Arn
       Timeout: 10
       MemorySize: 128
-      Layers: [ arn:aws:lambda:us-east-1:825765411228:layer:Python_Request:4 ]
+      Layers:
+        - arn:aws:lambda:us-east-1:825765411228:layer:Python_Request:4
       Environment:
         Variables:
           REGION:      us-east-1
@@ -21,16 +27,6 @@ Resources:
           ES_PASSWORD: Test1234!
       Code:
         ZipFile: |
-          """
-          Index-Photos Lambda
-          Triggered by S3 PUT events on the photo-storage bucket.
-          1) Reads new image key from event
-          2) Calls Rekognition to detect labels
-          3) Reads user-specified customLabels from S3 object metadata
-          4) Merges, deduplicates labels
-          5) Indexes document into OpenSearch 
-          """
-
           import os
           import json
           import datetime
@@ -110,16 +106,17 @@ Resources:
               }
 
 
-  cfn-SearchPhotosFunction:
+  cfnSearchPhotosFunction:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: cfn-search-photos
       Runtime: python3.13
       Handler: lambda_function.lambda_handler
-      Role: !GetAtt cfn-SearchLambdaRole.Arn
+      Role: !GetAtt cfnSearchLambdaRole.Arn
       Timeout: 10
       MemorySize: 128
-      Layers: [ arn:aws:lambda:us-east-1:825765411228:layer:Python_Request:4 ]
+      Layers:
+        - arn:aws:lambda:us-east-1:825765411228:layer:Python_Request:4
       Environment:
         Variables:
           REGION:      us-east-1
@@ -132,15 +129,6 @@ Resources:
           LOCALE_ID:   en_US
       Code:
         ZipFile: |
-          """
-          Search-Photos Lambda
-          Invoked by API Gateway GET /search?q=…
-          1) Reads `q` from query string
-          2) Disambiguates via Lex V2 recognize_text
-          3) Constructs OpenSearch fuzzy-match query on labels
-          4) Returns list of S3 URLs + labels
-          """
-
           import os
           import json
           import boto3
@@ -239,12 +227,13 @@ Resources:
                   "body": json.dumps(body_dict)
               }
 
-
 Outputs:
-  cfn-IndexFunctionArn:
-    Value: !GetAtt cfn-IndexPhotosFunction.Arn
-    Export: { Name: cfn-PhotoAlbum-IndexFunctionArn }
+  cfnIndexFunctionArn:
+    Value: !GetAtt cfnIndexPhotosFunction.Arn
+    Export:
+      Name: cfn-PhotoAlbum-IndexFunctionArn
 
-  cfn-SearchFunctionArn:
-    Value: !GetAtt cfn-SearchPhotosFunction.Arn
-    Export: { Name: cfn-PhotoAlbum-SearchFunctionArn }
+  cfnSearchFunctionArn:
+    Value: !GetAtt cfnSearchPhotosFunction.Arn
+    Export:
+      Name: cfn-PhotoAlbum-SearchFunctionArn

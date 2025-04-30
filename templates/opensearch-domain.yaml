@@ -1,9 +1,14 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: >-
-  cfn-PhotoAlbum OpenSearch Domain “photos”, secured and ready for indexing.
+Description: cfn-PhotoAlbum OpenSearch Domain “photos”
+
+Parameters:
+  MasterUserPassword:
+    Type: String
+    Description: Password for ES master user “admin”
+    NoEcho: true
 
 Resources:
-  cfn-PhotoSearchDomain:
+  cfnPhotoSearchDomain:
     Type: AWS::OpenSearchService::Domain
     Properties:
       DomainName: photos
@@ -15,10 +20,8 @@ Resources:
         EBSEnabled: true
         VolumeSize: 10
         VolumeType: gp3
-      EncryptionAtRestOptions:
-        Enabled: true
-      NodeToNodeEncryptionOptions:
-        Enabled: true
+      NodeToNodeEncryptionOptions: { Enabled: true }
+      EncryptionAtRestOptions:  { Enabled: true }
       DomainEndpointOptions:
         EnforceHTTPS: true
         TLSSecurityPolicy: TLS_1_2
@@ -36,21 +39,15 @@ Resources:
             Action: es:ESHttp*
             Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/photos/*
 
-Parameters:
-  MasterUserPassword:
-    Type: String
-    Description: Password for ES master user “admin”
-    NoEcho: true
-
 Outputs:
-  cfn-ESDomainEndpoint:
-    Description: HTTPS endpoint for “photos”
-    Value: !GetAtt cfn-PhotoSearchDomain.DomainEndpoint
+  cfnESDomainEndpoint:
+    Description: HTTPS endpoint for the “photos” domain
+    Value: !GetAtt cfnPhotoSearchDomain.DomainEndpoint
     Export:
       Name: cfn-PhotoAlbum-ESDomainEndpoint
 
-  cfn-ESDomainArn:
-    Description: ARN (with wildcard) of “photos”
+  cfnESDomainArn:
+    Description: ARN (with wildcard) of the “photos” domain
     Value: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/photos/*
     Export:
       Name: cfn-PhotoAlbum-ESDomainArn

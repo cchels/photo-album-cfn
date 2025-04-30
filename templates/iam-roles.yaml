@@ -1,13 +1,13 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: IAM roles for Lambdas & API→S3 proxy.
+Description: IAM roles & policies for Lambdas & API→S3
 
 Parameters:
-  cfn-ESDomainArn:
+  cfnESDomainArn:
     Type: String
-    Description: Exported ARN of OpenSearch domain (with /*)
+    Description: Exported ARN of the OpenSearch domain (with /*)
 
 Resources:
-  cfn-IndexLambdaRole:
+  cfnIndexLambdaRole:
     Type: AWS::IAM::Role
     Properties:
       RoleName: cfn-LambdaIndexFunctionRole
@@ -22,7 +22,10 @@ Resources:
           PolicyDocument:
             Statement:
               - Effect: Allow
-                Action: [logs:CreateLogGroup,logs:CreateLogStream,logs:PutLogEvents]
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
                 Resource: '*'
         - PolicyName: cfn-IndexS3AndRekognition
           PolicyDocument:
@@ -37,10 +40,12 @@ Resources:
           PolicyDocument:
             Statement:
               - Effect: Allow
-                Action: [es:ESHttpPost,es:ESHttpPut]
-                Resource: !Ref cfn-ESDomainArn
+                Action:
+                  - es:ESHttpPost
+                  - es:ESHttpPut
+                Resource: !Ref cfnESDomainArn
 
-  cfn-SearchLambdaRole:
+  cfnSearchLambdaRole:
     Type: AWS::IAM::Role
     Properties:
       RoleName: cfn-LambdaSearchFunctionRole
@@ -55,27 +60,32 @@ Resources:
           PolicyDocument:
             Statement:
               - Effect: Allow
-                Action: [logs:CreateLogGroup,logs:CreateLogStream,logs:PutLogEvents]
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
                 Resource: '*'
         - PolicyName: cfn-SearchS3AndOpenSearch
           PolicyDocument:
             Statement:
               - Effect: Allow
-                Action: [s3:ListBucket,s3:GetObject]
+                Action:
+                  - s3:ListBucket
+                  - s3:GetObject
                 Resource:
                   - !Sub 'arn:aws:s3:::${cfn-PhotoAlbum-PhotoBucketName}'
                   - !Sub 'arn:aws:s3:::${cfn-PhotoAlbum-PhotoBucketName}/*'
               - Effect: Allow
                 Action: es:ESHttpGet
-                Resource: !Ref cfn-ESDomainArn
+                Resource: !Ref cfnESDomainArn
         - PolicyName: cfn-SearchLex
           PolicyDocument:
             Statement:
               - Effect: Allow
                 Action: lex:RecognizeText
-                Resource: '*'  # can tighten to bot-alias ARN
+                Resource: '*'
 
-  cfn-ApiGatewayS3Role:
+  cfnApiGatewayS3Role:
     Type: AWS::IAM::Role
     Properties:
       RoleName: cfn-APIGatewayS3Role
@@ -96,5 +106,8 @@ Resources:
           PolicyDocument:
             Statement:
               - Effect: Allow
-                Action: [logs:CreateLogGroup,logs:CreateLogStream,logs:PutLogEvents]
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
                 Resource: '*'

@@ -1,25 +1,23 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Lambda invoke permissions
+Description: Lambda invoke permissions for S3 & API
 
 Parameters:
-  cfn-ApiId:
+  cfnApiId:
     Type: String
 
 Resources:
-# Allow S3 -> index-photos
-  cfn-PermissionIndexFromS3:
+  cfnPermissionIndexFromS3:
     Type: AWS::Lambda::Permission
     Properties:
       FunctionName: !ImportValue cfn-PhotoAlbum-IndexFunctionArn
       Action: lambda:InvokeFunction
       Principal: s3.amazonaws.com
       SourceArn: !Sub arn:aws:s3:::${cfn-PhotoAlbum-PhotoBucketName}
-      
-  # Allow API Gateway -> search-photos
-  cfn-PermissionSearchFromApi:
+
+  cfnPermissionSearchFromApi:
     Type: AWS::Lambda::Permission
     Properties:
       FunctionName: !ImportValue cfn-PhotoAlbum-SearchFunctionArn
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${cfn-ApiId}/*/GET/search
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${cfnApiId}/*/GET/search
