@@ -1,0 +1,63 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Create two S3 buckets:
+    • my-photo-bucket-hw3 (private, versioned, encrypted)
+    • my-frontend-bucket-hw3 (static website, public-read)
+
+Resources:
+  PhotoStorageBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: my-photo-bucket-hw3
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true
+
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: my-frontend-bucket-hw3
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument:  error.html
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: false     # allow public policy
+        RestrictPublicBuckets: false
+
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: PublicReadGetObject
+            Effect: Allow
+            Principal: '*'
+            Action: s3:GetObject
+            Resource: !Sub '${FrontendBucket}/*'
+
+Outputs:
+  PhotoBucketName:
+    Description: Photo storage bucket name
+    Value: !Ref PhotoStorageBucket
+    Export:
+      Name: PhotoAlbum-PhotoBucketName
+
+  FrontendWebsiteURL:
+    Description: Public URL for frontend website
+    Value: !GetAtt FrontendBucket.WebsiteURL

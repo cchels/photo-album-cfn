@@ -1,0 +1,142 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: IAM Roles for Lambdas & API Gateway→S3
+
+Resources:
+  # ── Index Lambda execution role ─────────────────────────────────────────
+  IndexLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: LambdaIndexFunctionRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: IndexLogs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: '*'
+        - PolicyName: IndexS3AndRekognition
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource:
+                  - !Sub 'arn:aws:s3:::${PhotoAlbum-PhotoBucketName}/*'
+              - Effect: Allow
+                Action:
+                  - rekognition:DetectLabels
+                Resource: '*'
+        - PolicyName: IndexOpenSearch
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - es:ESHttpPost
+                  - es:ESHttpPut
+                Resource: '*'   # tighten to your domain ARN if desired
+
+  # ── Search Lambda execution role ────────────────────────────────────────
+  SearchLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: LambdaSearchFunctionRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: SearchLogs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: '*'
+        - PolicyName: SearchS3AndOpenSearch
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                  - s3:GetObject
+                Resource:
+                  - !Sub 'arn:aws:s3:::${PhotoAlbum-PhotoBucketName}'
+                  - !Sub 'arn:aws:s3:::${PhotoAlbum-PhotoBucketName}/*'
+              - Effect: Allow
+                Action:
+                  - es:ESHttpGet
+                Resource: '*'
+        - PolicyName: SearchLex
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lex:RecognizeText
+                Resource: '*'  # narrow to bot alias ARN if you like
+
+  # ── API Gateway → S3 proxy role ────────────────────────────────────────
+  ApiGatewayS3Role:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: APIGatewayS3Role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: apigateway.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ProxyToS3
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                Resource:
+                  - !Sub 'arn:aws:s3:::${PhotoAlbum-PhotoBucketName}/*'
+        - PolicyName: APIGatewayLogs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: '*'
+
+Outputs:
+  IndexRoleArn:
+    Value: !GetAtt IndexLambdaRole.Arn
+    Export: { Name: PhotoAlbum-IndexRoleArn }
+
+  SearchRoleArn:
+    Value: !GetAtt SearchLambdaRole.Arn
+    Export: { Name: PhotoAlbum-SearchRoleArn }
+
+  ApiGatewayS3RoleArn:
+    Value: !GetAtt ApiGatewayS3Role.Arn
+    Export: { Name: PhotoAlbum-ApiGatewayS3RoleArn }
