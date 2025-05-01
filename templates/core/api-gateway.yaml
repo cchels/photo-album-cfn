@@ -17,8 +17,8 @@ Resources:
     Type: AWS::ApiGateway::Resource
     Properties:
       RestApiId: !Ref cfnPhotoApi
-      ParentId:  !GetAtt cfnPhotoApi.RootResourceId
-      PathPart:  upload
+      ParentId: !GetAtt cfnPhotoApi.RootResourceId
+      PathPart: upload
 
   cfnPutUploadMethod:
     Type: AWS::ApiGateway::Method
@@ -41,13 +41,25 @@ Resources:
         Credentials: !ImportValue cfn-PhotoAlbum-ApiGatewayS3RoleArn
         PassthroughBehavior: WHEN_NO_TEMPLATES
         RequestParameters:
-          integration.request.path.objectKey:              'method.request.querystring.filename'
-          integration.request.header.Content-Type:         'method.request.header.Content-Type'
+          integration.request.path.objectKey:               'method.request.querystring.filename'
+          integration.request.header.Content-Type:          'method.request.header.Content-Type'
           integration.request.header.x-amz-meta-customLabels: 'method.request.header.x-amz-meta-customLabels'
+        IntegrationResponses:                              # ← moved inside Integration
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
       MethodResponses:
         - StatusCode: 200
           ResponseParameters:
             method.response.header.Access-Control-Allow-Origin: true
+          ResponseModels:
+            application/json: UploadResponse
+        - StatusCode: 403
+          ResponseModels:
+            application/json: Error
+        - StatusCode: 500
+          ResponseModels:
+            application/json: Error
 
   cfnOptionsUpload:
     Type: AWS::ApiGateway::Method
@@ -77,7 +89,7 @@ Resources:
     Type: AWS::ApiGateway::Resource
     Properties:
       RestApiId: !Ref cfnPhotoApi
-      ParentId:  !GetAtt cfnPhotoApi.RootResourceId
+      ParentId: !GetAtt cfnPhotoApi.RootResourceId
       PathPart:  search
 
   cfnGetSearch:
@@ -87,6 +99,8 @@ Resources:
       ResourceId: !Ref cfnSearchResource
       HttpMethod: GET
       AuthorizationType: NONE
+      RequestParameters:
+        method.request.querystring.q: false
       Integration:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
@@ -98,6 +112,14 @@ Resources:
         - StatusCode: 200
           ResponseParameters:
             method.response.header.Access-Control-Allow-Origin: true
+          ResponseModels:
+            application/json: SearchResponse
+        - StatusCode: 403
+          ResponseModels:
+            application/json: Error
+        - StatusCode: 500
+          ResponseModels:
+            application/json: Error
 
   cfnOptionsSearch:
     Type: AWS::ApiGateway::Method
@@ -113,7 +135,7 @@ Resources:
         IntegrationResponses:
           - StatusCode: 200
             ResponseParameters:
-              method.response.header.Access-Control-Allow-Headers: "''Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
               method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
               method.response.header.Access-Control-Allow-Origin:  "'*'"
       MethodResponses:

@@ -34,61 +34,80 @@ Resources:
           ES_PASSWORD: Test1234!
       Code:
         ZipFile: |
-          import os, json, datetime, boto3, requests
+          import os
+          import json
+          import boto3
+          import datetime
+          import requests
           from requests.auth import HTTPBasicAuth
 
-          REGION      = os.environ['REGION']
+          REGION = os.environ['REGION']
           ES_ENDPOINT = os.environ['ES_ENDPOINT']
-          ES_INDEX    = os.environ['ES_INDEX']
           ES_USERNAME = os.environ['ES_USERNAME']
           ES_PASSWORD = os.environ['ES_PASSWORD']
+          ES_INDEX = os.environ['ES_INDEX']
 
+          # AWS clients
           rek = boto3.client('rekognition', region_name=REGION)
           s3  = boto3.client('s3', region_name=REGION)
 
           def lambda_handler(event, context):
-              # 1) Extract bucket & key
-              rec    = event['Records'][0]['s3']
+              # 1) Parse the S3 PUT event
+              rec = event['Records'][0]['s3']
               bucket = rec['bucket']['name']
-              key    = rec['object']['key']
+              key = rec['object']['key']
 
-              # 2) Detect labels
+              # 2) Call Rekognition.detect_labels
               rek_resp = rek.detect_labels(
-                  Image={'S3Object': {'Bucket': bucket, 'Name': key}},
-                  MaxLabels=10, MinConfidence=75
+                  Image={'S3Object':{'Bucket':bucket,'Name':key}},
               )
-              auto_labels = [l['Name'] for l in rek_resp.get('Labels', [])]
+              detected = [lbl['Name'] for lbl in rek_resp['Labels']]
 
-              # 3) Get custom labels
-              meta = s3.head_object(Bucket=bucket, Key=key).get('Metadata', {})
-              custom_labels = [c.strip() for c in meta.get('customlabels','').split(',') if c.strip()]
+              # 3) Call S3.head_object to get any custom labels
+              head = s3.head_object(Bucket=bucket, Key=key)
+              meta = head.get('Metadata', {})
+              custom = meta.get('customlabels', '')
+              custom_labels = [c.strip() for c in custom.split(',') if c.strip()]
 
-              # 4) Combine & dedupe
-              labels = list({*map(str.lower, auto_labels), *map(str.lower, custom_labels)})
+              # 4) Merge & dedupe
+              labels = list({*custom_labels, *detected})
 
-              # 5) Build ES doc
+              # 5) Build the JSON document
               doc = {
-                "objectKey": key,
-                "bucket": bucket,
-                "createdTimestamp": datetime.datetime.utcnow().isoformat(),
-                "labels": labels
+                  "objectKey":        key,
+                  "bucket":           bucket,
+                  "createdTimestamp": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S"),
+                  "labels":           labels
               }
 
-              # 6) Index to OpenSearch
+              # 6) Send to OpenSearch via HTTP POST + Basic auth
               url = f"{ES_ENDPOINT}/{ES_INDEX}/_doc"
-              resp = requests.post(
-                url,
-                auth=HTTPBasicAuth(ES_USERNAME, ES_PASSWORD),
-                headers={"Content-Type":"application/json"},
-                data=json.dumps(doc)
-              )
-              if resp.status_code not in (200,201):
+              headers = {"Content-Type": "application/json"}
+              auth = HTTPBasicAuth(ES_USERNAME, ES_PASSWORD)
+
+              resp = requests.post(url, auth=auth, headers=headers, data=json.dumps(doc))
+              if resp.status_code not in (200, 201):
+                  # Log and raise so Lambda shows an error
+                  print(f"Elasticsearch error [{resp.status_code}]: {resp.text}")
                   raise Exception(f"Indexing failed: {resp.status_code}")
 
+              print(f"Indexed {key}: {labels}")
               return {
-                "statusCode": resp.status_code,
-                "body": json.dumps({"indexed": key})
+                  "statusCode": resp.status_code,
+                  "body":       json.dumps({"indexed": key})
               }
+
+  cfnIndexPhotosVersion:
+    Type: AWS::Lambda::Version
+    Properties:
+      FunctionName: !Ref cfnIndexPhotosFunction 
+
+  cfnIndexPhotosProdAlias:
+    Type: AWS::Lambda::Alias
+    Properties: 
+      Name: PROD
+      FunctionName: !Ref cfnIndexPhotosFunction
+      FunctionVersion: !GetAtt cfnIndexPhotosVersion.Version
 
   cfnSearchPhotosFunction:
     Type: AWS::Lambda::Function
@@ -113,73 +132,148 @@ Resources:
           LOCALE_ID:    en_US
       Code:
         ZipFile: |
-          import os, json, boto3, requests
+          import os
+          import json
+          import boto3
+          import requests
           from requests.auth import HTTPBasicAuth
 
-          REGION      = os.environ['REGION']
+          REGION = os.environ['REGION']
           ES_ENDPOINT = os.environ['ES_ENDPOINT']
-          ES_INDEX    = os.environ['ES_INDEX']
           ES_USERNAME = os.environ['ES_USERNAME']
           ES_PASSWORD = os.environ['ES_PASSWORD']
-          BOT_ID      = os.environ['BOT_ID']
-          BOT_ALIAS_ID= os.environ['BOT_ALIAS_ID']
-          LOCALE_ID   = os.environ['LOCALE_ID']
+          ES_INDEX = os.environ['ES_INDEX']
+          LEX_BOT_ID = os.environ['BOT_ID']
+          LEX_ALIAS_ID = os.environ['BOT_ALIAS_ID']
+          LEX_LOCALE = os.environ['LOCALE_ID']
 
-          lex = boto3.client('lexv2-runtime', region_name=REGION)
+          # AWS clients
+          lex_client = boto3.client('lexv2-runtime', region_name=REGION)
+          s3_client = boto3.client('s3', region_name=REGION)
 
           def lambda_handler(event, context):
-              # 1) Extract q
-              q = (event.get('queryStringParameters') or {}).get('q','').strip()
+              # 1) Extract the raw query from API Gateway
+              params = event.get('queryStringParameters') or {}
+              q = params.get('q','').strip()
               if not q:
-                  return _resp(200, {"results": []})
+                  return {
+                      "statusCode": 200,
+                      "headers": {
+                          "Content-Type": "application/json",
+                          "Access-Control-Allow-Origin": "*"    # if you need CORS
+                      },
+                      "body": json.dumps({"results":[]})
+                  }
 
-              # 2) Disambiguate via Lex
-              try:
-                  r = lex.recognize_text(
-                      botId=BOT_ID,
-                      botAliasId=BOT_ALIAS_ID,
-                      localeId=LOCALE_ID,
-                      sessionId=context.aws_request_id,
-                      text=q
-                  )
-                  slot = r['sessionState']['intent']['slots'].get('query1',{})
-                  term = slot.get('value',{}).get('interpretedValue', q)
-              except Exception:
-                  term = q
-
-              # 3) Build ES query
-              es_q = {"query":{"match":{"labels":{"query":term,"fuzziness":"AUTO"}}}}
-
-              # 4) Call OpenSearch
-              url = f"{ES_ENDPOINT}/{ES_INDEX}/_search"
-              r = requests.get(
-                url,
-                auth=HTTPBasicAuth(ES_USERNAME, ES_PASSWORD),
-                headers={"Content-Type":"application/json"},
-                json=es_q
+              # 2) Send to Lex V2 to get slots
+              lex_resp = lex_client.recognize_text(
+                  botId        = LEX_BOT_ID,
+                  botAliasId   = LEX_ALIAS_ID,
+                  localeId     = LEX_LOCALE,
+                  sessionId    = context.aws_request_id,
+                  text         = q
               )
-              hits = r.json().get('hits',{}).get('hits',[])
+              slots = lex_resp.get('sessionState',{}).get('intent',{}).get('slots',{})
 
-              # 5) Format results
-              results = []
-              for h in hits:
-                  src = h['_source']
-                  results.append({
-                    "url":    f"https://{src['bucket']}.s3.amazonaws.com/{src['objectKey']}",
-                    "labels": src.get('labels',[])
+              # 3) Build a list of search terms from query1 (required) and query2 (optional)
+              terms = []
+
+              # query1 is required, so we expect it to always be present
+              q1_slot = slots.get('query1')
+              if q1_slot and q1_slot.get('value') and q1_slot['value'].get('interpretedValue'):
+                  terms.append(q1_slot['value']['interpretedValue'])
+
+              # query2 is optional—only append if the user provided it
+              q2_slot = slots.get('query2')
+              if q2_slot and q2_slot.get('value') and q2_slot['value'].get('interpretedValue'):
+                  terms.append(q2_slot['value']['interpretedValue'])
+
+              # If somehow query1 is missing or empty, bail out:
+              if not terms:
+                  return {
+                      "statusCode": 200,
+                      "headers": {
+                          "Content-Type": "application/json",
+                          "Access-Control-Allow-Origin": "*"    # if you need CORS
+                      },
+                      "body": json.dumps({"results":[]})
+                  }
+
+              # 4) Build Elasticsearch bool/should query with fuzzy match on query1 (and query2 if present)
+              should_clauses = []
+
+              # always add the required query1
+              should_clauses.append({
+                  "match": {
+                      "labels": {
+                          "query": terms[0],
+                          "fuzziness": "AUTO"
+                      }
+                  }
+              })
+
+              # if query2 was provided, add it too
+              if len(terms) > 1:
+                  should_clauses.append({
+                      "match": {
+                          "labels": {
+                              "query": terms[1],
+                              "fuzziness": "AUTO"
+                          }
+                      }
                   })
 
-              return _resp(200, {"results": results})
-
-          def _resp(status, body):
-              return {
-                "statusCode": status,
-                "headers": {
-                  "Content-Type":                "application/json",
-                  "Access-Control-Allow-Origin": "*"
-                },
-                "body": json.dumps(body)
+              es_body = {
+                  "query": {
+                      "bool": {
+                          "should": should_clauses,
+                          "minimum_should_match": 1
+                      }
+                  }
               }
+
+              # 5) Call OpenSearch
+              url = f"{ES_ENDPOINT}/{ES_INDEX}/_search"
+              resp = requests.get(
+                  url,
+                  auth=HTTPBasicAuth(ES_USERNAME, ES_PASSWORD),
+                  headers={"Content-Type":"application/json"},
+                  data=json.dumps(es_body)
+              )
+              resp.raise_for_status()
+              hits = resp.json().get('hits',{}).get('hits',[])
+
+              # 6) Format results per your API spec
+              results = []
+              for h in hits:
+                  src = h.get('_source',{})
+                  # presuming your S3 bucket is public or via presigned URL
+                  url = f"https://{src['bucket']}.s3.amazonaws.com/{src['objectKey']}"
+                  results.append({
+                      "url":    url,
+                      "labels": src.get('labels',[])
+                  })
+
+              return {
+                  "statusCode": 200,
+                  "headers": {
+                      "Content-Type": "application/json",
+                      "Access-Control-Allow-Origin": "*"    # if you need CORS
+                  },
+                  "body": json.dumps({"results": results})
+              }
+
+  cfnSearchPhotosVersion:
+    Type: AWS::Lambda::Version
+    Properties:
+      FunctionName: !Ref cfnSearchPhotosFunction
+
+  cfnSearchPhotosProdAlias:
+    Type: AWS::Lambda::Alias
+    Properties:
+      Name: PROD
+      FunctionName: !Ref cfnSearchPhotosFunction
+      FunctionVersion: !GetAtt cfnSearchPhotosVersion.Version
 
 Outputs:
   IndexFunctionArn:

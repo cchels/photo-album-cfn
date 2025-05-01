@@ -1,86 +1,61 @@
-"""
-Index-Photos Lambda
-Triggered by S3 PUT events on the photo-storage bucket.
-1) Reads new image key from event
-2) Calls Rekognition to detect labels
-3) Reads user-specified customLabels from S3 object metadata
-4) Merges, deduplicates labels
-5) Indexes document into OpenSearch 
-"""
-
 import os
 import json
-import datetime
 import boto3
+import datetime
 import requests
 from requests.auth import HTTPBasicAuth
 
-# ─── Environment Variables ─────────────────────────────────────────────
-REGION      = os.environ['REGION']
+REGION = os.environ['REGION']
 ES_ENDPOINT = os.environ['ES_ENDPOINT']
-ES_INDEX    = os.environ['ES_INDEX']
 ES_USERNAME = os.environ['ES_USERNAME']
 ES_PASSWORD = os.environ['ES_PASSWORD']
+ES_INDEX = os.environ['ES_INDEX']
 
-# ─── AWS Clients ────────────────────────────────────────────────────────
-# Rekognition: detectLabels on images in S3
+# AWS clients
 rek = boto3.client('rekognition', region_name=REGION)
-# S3: read metadata from objects
 s3  = boto3.client('s3', region_name=REGION)
 
 def lambda_handler(event, context):
-    """
-    Main entrypoint for index-photos function.
-    Expects an S3 PUT event in `event['Records'][0]`.
-    """
+    # 1) Parse the S3 PUT event
+    rec = event['Records'][0]['s3']
+    bucket = rec['bucket']['name']
+    key = rec['object']['key']
 
-    # 1) Extract bucket name and object key from event
-    try:
-        rec    = event['Records'][0]['s3']
-        bucket = rec['bucket']['name']
-        key    = rec['object']['key']
-    except (KeyError, IndexError):
-        raise ValueError("Event does not contain S3 PUT record")
-
-    # 2) Call Rekognition.detect_labels to get auto-generated labels
+    # 2) Call Rekognition.detect_labels
     rek_resp = rek.detect_labels(
-        Image={'S3Object': {'Bucket': bucket, 'Name': key}},
-        MaxLabels=10,
-        MinConfidence=75
+        Image={'S3Object':{'Bucket':bucket,'Name':key}},
     )
-    auto_labels = [lbl['Name'] for lbl in rek_resp.get('Labels', [])]
+    detected = [lbl['Name'] for lbl in rek_resp['Labels']]
 
-    # 3) Retrieve custom labels from S3 metadata: x-amz-meta-customlabels
+    # 3) Call S3.head_object to get any custom labels
     head = s3.head_object(Bucket=bucket, Key=key)
-    raw_meta = head.get('Metadata', {}).get('customlabels', '')
-    custom_labels = [
-        label.strip() for label in raw_meta.split(',')
-        if label.strip()
-    ]
+    meta = head.get('Metadata', {})
+    custom = meta.get('customlabels', '')
+    custom_labels = [c.strip() for c in custom.split(',') if c.strip()]
 
-    # 4) Combine and dedupe
-    all_labels = list({*map(str.lower, auto_labels), *map(str.lower, custom_labels)})
+    # 4) Merge & dedupe
+    labels = list({*custom_labels, *detected})
 
-    # 5) Build document to index
+    # 5) Build the JSON document
     doc = {
         "objectKey":        key,
         "bucket":           bucket,
-        "createdTimestamp": datetime.datetime.utcnow().isoformat(),
-        "labels":           all_labels
+        "createdTimestamp": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S"),
+        "labels":           labels
     }
 
-    # 6) Index document into OpenSearch
+    # 6) Send to OpenSearch via HTTP POST + Basic auth
     url = f"{ES_ENDPOINT}/{ES_INDEX}/_doc"
-    auth = HTTPBasicAuth(ES_USERNAME, ES_PASSWORD)
     headers = {"Content-Type": "application/json"}
-    resp = requests.post(url, auth=auth, headers=headers, data=json.dumps(doc))
+    auth = HTTPBasicAuth(ES_USERNAME, ES_PASSWORD)
 
-    # 7) Check response status
+    resp = requests.post(url, auth=auth, headers=headers, data=json.dumps(doc))
     if resp.status_code not in (200, 201):
-        print(f"[ERROR] OpenSearch indexing failed: {resp.status_code} {resp.text}")
+        # Log and raise so Lambda shows an error
+        print(f"Elasticsearch error [{resp.status_code}]: {resp.text}")
         raise Exception(f"Indexing failed: {resp.status_code}")
 
-    print(f"[SUCCESS] Indexed {key} with labels: {all_labels}")
+    print(f"Indexed {key}: {labels}")
     return {
         "statusCode": resp.status_code,
         "body":       json.dumps({"indexed": key})
