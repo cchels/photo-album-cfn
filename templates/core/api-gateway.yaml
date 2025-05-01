@@ -13,6 +13,76 @@ Resources:
         - image/jpeg
         - image/heic
 
+# ─── SHARED MODELS ─────────────────────────────────────────────────────────
+  cfnPhotoModel:
+    Type: AWS::ApiGateway::Model
+    Properties:
+      RestApiId: !Ref cfnPhotoApi
+      ContentType: application/json
+      Name: Photo
+      Schema:
+        $schema: "http://json-schema.org/draft-04/schema#"
+        title: Photo
+        type: object
+        properties:
+          url:
+            type: string
+          labels:
+            type: array
+            items:
+              type: string
+
+  cfnSearchResponseModel:
+    Type: AWS::ApiGateway::Model
+    Properties:
+      RestApiId: !Ref cfnPhotoApi
+      Name: SearchResponse
+      ContentType: application/json
+      Schema:
+        $schema: "http://json-schema.org/draft-04/schema#"
+        title: SearchResponse
+        type: object
+        properties:
+          results:
+            type: array
+            items:
+              type: object
+              properties:
+                url:
+                  type: string
+                labels:
+                  type: array
+                  items:
+                    type: string
+
+  cfnUploadResponseModel:
+    Type: AWS::ApiGateway::Model
+    Properties:
+      RestApiId: !Ref cfnPhotoApi
+      ContentType: application/json
+      Name: UploadResponse
+      Schema:
+        $schema: "http://json-schema.org/draft-04/schema#"
+        title: UploadResponse
+        type: object
+        properties: {}
+
+  cfnErrorModel:
+    Type: AWS::ApiGateway::Model
+    Properties:
+      RestApiId: !Ref cfnPhotoApi
+      ContentType: application/json
+      Name: ErrorResponse
+      Schema:
+        $schema: "http://json-schema.org/draft-04/schema#"
+        title: ErrorResponse
+        type: object
+        properties:
+          code:
+            type: integer
+          message:
+            type: string
+ 
   cfnUploadResource:
     Type: AWS::ApiGateway::Resource
     Properties:
@@ -28,8 +98,8 @@ Resources:
       HttpMethod: PUT
       AuthorizationType: NONE
       RequestParameters:
-        method.request.querystring.filename:           true
-        method.request.header.Content-Type:            true
+        method.request.querystring.filename: true
+        method.request.header.Content-Type: true
         method.request.header.x-amz-meta-customLabels: false
       Integration:
         Type: AWS
@@ -41,25 +111,27 @@ Resources:
         Credentials: !ImportValue cfn-PhotoAlbum-ApiGatewayS3RoleArn
         PassthroughBehavior: WHEN_NO_TEMPLATES
         RequestParameters:
-          integration.request.path.objectKey:               'method.request.querystring.filename'
-          integration.request.header.Content-Type:          'method.request.header.Content-Type'
-          integration.request.header.x-amz-meta-customLabels: 'method.request.header.x-amz-meta-customLabels'
-        IntegrationResponses:                              # ← moved inside Integration
+          integration.request.path.objectKey:     method.request.querystring.filename
+          integration.request.header.Content-Type: method.request.header.Content-Type
+          integration.request.header.x-amz-meta-customLabels: method.request.header.x-amz-meta-customLabels
+        IntegrationResponses:
           - StatusCode: 200
             ResponseParameters:
               method.response.header.Access-Control-Allow-Origin: "'*'"
+            ResponseTemplates:
+              application/json: ""
       MethodResponses:
         - StatusCode: 200
           ResponseParameters:
             method.response.header.Access-Control-Allow-Origin: true
           ResponseModels:
-            application/json: UploadResponse
+            application/json: !Ref cfnUploadResponseModel
         - StatusCode: 403
           ResponseModels:
-            application/json: Error
+            application/json: !Ref cfnErrorModel
         - StatusCode: 500
           ResponseModels:
-            application/json: Error
+            application/json: !Ref cfnErrorModel
 
   cfnOptionsUpload:
     Type: AWS::ApiGateway::Method
@@ -113,13 +185,13 @@ Resources:
           ResponseParameters:
             method.response.header.Access-Control-Allow-Origin: true
           ResponseModels:
-            application/json: SearchResponse
+            application/json: !Ref cfnSearchResponseModel
         - StatusCode: 403
           ResponseModels:
-            application/json: Error
+            application/json: !Ref cfnErrorModel
         - StatusCode: 500
           ResponseModels:
-            application/json: Error
+            application/json: !Ref cfnErrorModel
 
   cfnOptionsSearch:
     Type: AWS::ApiGateway::Method
@@ -135,7 +207,7 @@ Resources:
         IntegrationResponses:
           - StatusCode: 200
             ResponseParameters:
-              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"  # ← fixed stray quote
               method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
               method.response.header.Access-Control-Allow-Origin:  "'*'"
       MethodResponses:
@@ -153,6 +225,17 @@ Resources:
       Principal: apigateway.amazonaws.com
       SourceArn:
         Fn::Sub: arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${cfnPhotoApi}/*/GET/search
+
+  cfnApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - cfnPutUploadMethod
+      - cfnOptionsUpload
+      - cfnGetSearch
+      - cfnOptionsSearch
+    Properties:
+      RestApiId: !Ref cfnPhotoApi
+      StageName: prod
 
 Outputs:
   cfnApiUrl:
