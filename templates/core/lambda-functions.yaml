@@ -1,0 +1,195 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: cfn-index-photos & cfn-search-photos Lambda functions
+
+Parameters:
+  ESDomainEndpoint:
+    Type: String
+    Description: HTTPS endpoint of your existing OpenSearch domain
+  IndexLambdaRoleArn:
+    Type: String
+    Description: ARN of the Index-Photos Lambda execution role
+  SearchLambdaRoleArn:
+    Type: String
+    Description: ARN of the Search-Photos Lambda execution role
+
+Resources:
+
+  cfnIndexPhotosFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: cfn-index-photos
+      Runtime: python3.13
+      Handler: lambda_function.lambda_handler
+      Role: !Ref IndexLambdaRoleArn
+      Timeout: 10
+      MemorySize: 128
+      Layers:
+        - arn:aws:lambda:us-east-1:825765411228:layer:Python_Request:4
+      Environment:
+        Variables:
+          REGION:      us-east-1
+          ES_ENDPOINT: !Ref ESDomainEndpoint
+          ES_INDEX:    photos
+          ES_USERNAME: admin
+          ES_PASSWORD: Test1234!
+      Code:
+        ZipFile: |
+          import os, json, datetime, boto3, requests
+          from requests.auth import HTTPBasicAuth
+
+          REGION      = os.environ['REGION']
+          ES_ENDPOINT = os.environ['ES_ENDPOINT']
+          ES_INDEX    = os.environ['ES_INDEX']
+          ES_USERNAME = os.environ['ES_USERNAME']
+          ES_PASSWORD = os.environ['ES_PASSWORD']
+
+          rek = boto3.client('rekognition', region_name=REGION)
+          s3  = boto3.client('s3', region_name=REGION)
+
+          def lambda_handler(event, context):
+              # 1) Extract bucket & key
+              rec    = event['Records'][0]['s3']
+              bucket = rec['bucket']['name']
+              key    = rec['object']['key']
+
+              # 2) Detect labels
+              rek_resp = rek.detect_labels(
+                  Image={'S3Object': {'Bucket': bucket, 'Name': key}},
+                  MaxLabels=10, MinConfidence=75
+              )
+              auto_labels = [l['Name'] for l in rek_resp.get('Labels', [])]
+
+              # 3) Get custom labels
+              meta = s3.head_object(Bucket=bucket, Key=key).get('Metadata', {})
+              custom_labels = [c.strip() for c in meta.get('customlabels','').split(',') if c.strip()]
+
+              # 4) Combine & dedupe
+              labels = list({*map(str.lower, auto_labels), *map(str.lower, custom_labels)})
+
+              # 5) Build ES doc
+              doc = {
+                "objectKey": key,
+                "bucket": bucket,
+                "createdTimestamp": datetime.datetime.utcnow().isoformat(),
+                "labels": labels
+              }
+
+              # 6) Index to OpenSearch
+              url = f"{ES_ENDPOINT}/{ES_INDEX}/_doc"
+              resp = requests.post(
+                url,
+                auth=HTTPBasicAuth(ES_USERNAME, ES_PASSWORD),
+                headers={"Content-Type":"application/json"},
+                data=json.dumps(doc)
+              )
+              if resp.status_code not in (200,201):
+                  raise Exception(f"Indexing failed: {resp.status_code}")
+
+              return {
+                "statusCode": resp.status_code,
+                "body": json.dumps({"indexed": key})
+              }
+
+  cfnSearchPhotosFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: cfn-search-photos
+      Runtime: python3.13
+      Handler: lambda_function.lambda_handler
+      Role: !Ref SearchLambdaRoleArn
+      Timeout: 10
+      MemorySize: 128
+      Layers:
+        - arn:aws:lambda:us-east-1:825765411228:layer:Python_Request:4
+      Environment:
+        Variables:
+          REGION:       us-east-1
+          ES_ENDPOINT:  !Ref ESDomainEndpoint
+          ES_INDEX:     photos
+          ES_USERNAME:  admin
+          ES_PASSWORD:  Test1234!
+          BOT_ID:       PEPR7UR3MW
+          BOT_ALIAS_ID: TSTALIASID
+          LOCALE_ID:    en_US
+      Code:
+        ZipFile: |
+          import os, json, boto3, requests
+          from requests.auth import HTTPBasicAuth
+
+          REGION      = os.environ['REGION']
+          ES_ENDPOINT = os.environ['ES_ENDPOINT']
+          ES_INDEX    = os.environ['ES_INDEX']
+          ES_USERNAME = os.environ['ES_USERNAME']
+          ES_PASSWORD = os.environ['ES_PASSWORD']
+          BOT_ID      = os.environ['BOT_ID']
+          BOT_ALIAS_ID= os.environ['BOT_ALIAS_ID']
+          LOCALE_ID   = os.environ['LOCALE_ID']
+
+          lex = boto3.client('lexv2-runtime', region_name=REGION)
+
+          def lambda_handler(event, context):
+              # 1) Extract q
+              q = (event.get('queryStringParameters') or {}).get('q','').strip()
+              if not q:
+                  return _resp(200, {"results": []})
+
+              # 2) Disambiguate via Lex
+              try:
+                  r = lex.recognize_text(
+                      botId=BOT_ID,
+                      botAliasId=BOT_ALIAS_ID,
+                      localeId=LOCALE_ID,
+                      sessionId=context.aws_request_id,
+                      text=q
+                  )
+                  slot = r['sessionState']['intent']['slots'].get('query1',{})
+                  term = slot.get('value',{}).get('interpretedValue', q)
+              except Exception:
+                  term = q
+
+              # 3) Build ES query
+              es_q = {"query":{"match":{"labels":{"query":term,"fuzziness":"AUTO"}}}}
+
+              # 4) Call OpenSearch
+              url = f"{ES_ENDPOINT}/{ES_INDEX}/_search"
+              r = requests.get(
+                url,
+                auth=HTTPBasicAuth(ES_USERNAME, ES_PASSWORD),
+                headers={"Content-Type":"application/json"},
+                json=es_q
+              )
+              hits = r.json().get('hits',{}).get('hits',[])
+
+              # 5) Format results
+              results = []
+              for h in hits:
+                  src = h['_source']
+                  results.append({
+                    "url":    f"https://{src['bucket']}.s3.amazonaws.com/{src['objectKey']}",
+                    "labels": src.get('labels',[])
+                  })
+
+              return _resp(200, {"results": results})
+
+          def _resp(status, body):
+              return {
+                "statusCode": status,
+                "headers": {
+                  "Content-Type":                "application/json",
+                  "Access-Control-Allow-Origin": "*"
+                },
+                "body": json.dumps(body)
+              }
+
+Outputs:
+  IndexFunctionArn:
+    Description: ARN of the index-photos function
+    Value: !GetAtt cfnIndexPhotosFunction.Arn
+    Export:
+      Name: cfn-PhotoAlbum-IndexFunctionArn
+
+  SearchFunctionArn:
+    Description: ARN of the search-photos function
+    Value: !GetAtt cfnSearchPhotosFunction.Arn
+    Export:
+      Name: cfn-PhotoAlbum-SearchFunctionArn

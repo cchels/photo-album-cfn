@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: cfn-PhotoAlbum OpenSearch Domain “photos”
+Description: cfn-PhotoAlbum OpenSearch Domain “cfn-photos” (avoiding name collision)
 
 Parameters:
   MasterUserPassword:
@@ -11,7 +11,7 @@ Resources:
   cfnPhotoSearchDomain:
     Type: AWS::OpenSearchService::Domain
     Properties:
-      DomainName: photos
+      DomainName: cfn-photos
       EngineVersion: OpenSearch_2.17
       ClusterConfig:
         InstanceType: t3.small.search
@@ -20,11 +20,14 @@ Resources:
         EBSEnabled: true
         VolumeSize: 10
         VolumeType: gp3
-      NodeToNodeEncryptionOptions: { Enabled: true }
-      EncryptionAtRestOptions:  { Enabled: true }
+      NodeToNodeEncryptionOptions:
+        Enabled: true
+      EncryptionAtRestOptions:
+        Enabled: true
       DomainEndpointOptions:
         EnforceHTTPS: true
-        TLSSecurityPolicy: TLS_1_2
+        # Use a valid enum value here:
+        TLSSecurityPolicy: Policy-Min-TLS-1-2-2019-07
       AdvancedSecurityOptions:
         Enabled: true
         InternalUserDatabaseEnabled: true
@@ -37,17 +40,17 @@ Resources:
           - Effect: Allow
             Principal: "*"
             Action: es:ESHttp*
-            Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/photos/*
+            Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/cfn-photos/*
 
 Outputs:
   cfnESDomainEndpoint:
-    Description: HTTPS endpoint for the “photos” domain
+    Description: HTTPS endpoint for the “cfn-photos” domain
     Value: !GetAtt cfnPhotoSearchDomain.DomainEndpoint
     Export:
       Name: cfn-PhotoAlbum-ESDomainEndpoint
 
   cfnESDomainArn:
-    Description: ARN (with wildcard) of the “photos” domain
-    Value: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/photos/*
+    Description: ARN (with wildcard) of the “cfn-photos” domain
+    Value: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/cfn-photos/*
     Export:
       Name: cfn-PhotoAlbum-ESDomainArn

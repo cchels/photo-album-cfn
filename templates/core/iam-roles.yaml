@@ -4,7 +4,7 @@ Description: IAM roles & policies for Lambdas & API→S3
 Parameters:
   cfnESDomainArn:
     Type: String
-    Description: Exported ARN of the OpenSearch domain (with /*)
+    Description: ARN of your existing OpenSearch domain (must include /*)
 
 Resources:
   cfnIndexLambdaRole:
@@ -15,7 +15,8 @@ Resources:
         Version: '2012-10-17'
         Statement:
           - Effect: Allow
-            Principal: { Service: lambda.amazonaws.com }
+            Principal:
+              Service: lambda.amazonaws.com
             Action: sts:AssumeRole
       Policies:
         - PolicyName: cfn-IndexLogs
@@ -31,10 +32,15 @@ Resources:
           PolicyDocument:
             Statement:
               - Effect: Allow
-                Action: s3:GetObject
-                Resource: !Sub 'arn:aws:s3:::${cfn-PhotoAlbum-PhotoBucketName}/*'
+                Action:
+                  - s3:GetObject
+                Resource:
+                  - !Sub
+                      - 'arn:aws:s3:::${PhotoBucketName}/*'
+                      - { PhotoBucketName: !ImportValue cfn-PhotoAlbum-PhotoBucketName }
               - Effect: Allow
-                Action: rekognition:DetectLabels
+                Action:
+                  - rekognition:DetectLabels
                 Resource: '*'
         - PolicyName: cfn-IndexOpenSearch
           PolicyDocument:
@@ -53,7 +59,8 @@ Resources:
         Version: '2012-10-17'
         Statement:
           - Effect: Allow
-            Principal: { Service: lambda.amazonaws.com }
+            Principal:
+              Service: lambda.amazonaws.com
             Action: sts:AssumeRole
       Policies:
         - PolicyName: cfn-SearchLogs
@@ -71,18 +78,27 @@ Resources:
               - Effect: Allow
                 Action:
                   - s3:ListBucket
+                Resource:
+                  - !Sub
+                      - 'arn:aws:s3:::${PhotoBucketName}'
+                      - { PhotoBucketName: !ImportValue cfn-PhotoAlbum-PhotoBucketName }
+              - Effect: Allow
+                Action:
                   - s3:GetObject
                 Resource:
-                  - !Sub 'arn:aws:s3:::${cfn-PhotoAlbum-PhotoBucketName}'
-                  - !Sub 'arn:aws:s3:::${cfn-PhotoAlbum-PhotoBucketName}/*'
+                  - !Sub
+                      - 'arn:aws:s3:::${PhotoBucketName}/*'
+                      - { PhotoBucketName: !ImportValue cfn-PhotoAlbum-PhotoBucketName }
               - Effect: Allow
-                Action: es:ESHttpGet
+                Action:
+                  - es:ESHttpGet
                 Resource: !Ref cfnESDomainArn
         - PolicyName: cfn-SearchLex
           PolicyDocument:
             Statement:
               - Effect: Allow
-                Action: lex:RecognizeText
+                Action:
+                  - lex:RecognizeText
                 Resource: '*'
 
   cfnApiGatewayS3Role:
@@ -93,15 +109,20 @@ Resources:
         Version: '2012-10-17'
         Statement:
           - Effect: Allow
-            Principal: { Service: apigateway.amazonaws.com }
+            Principal:
+              Service: apigateway.amazonaws.com
             Action: sts:AssumeRole
       Policies:
         - PolicyName: cfn-ProxyToS3
           PolicyDocument:
             Statement:
               - Effect: Allow
-                Action: s3:PutObject
-                Resource: !Sub 'arn:aws:s3:::${cfn-PhotoAlbum-PhotoBucketName}/*'
+                Action:
+                  - s3:PutObject
+                Resource:
+                  - !Sub
+                      - 'arn:aws:s3:::${PhotoBucketName}/*'
+                      - { PhotoBucketName: !ImportValue cfn-PhotoAlbum-PhotoBucketName }
         - PolicyName: cfn-ApiGatewayLogs
           PolicyDocument:
             Statement:
@@ -111,3 +132,22 @@ Resources:
                   - logs:CreateLogStream
                   - logs:PutLogEvents
                 Resource: '*'
+
+Outputs:
+  IndexLambdaRoleArn:
+    Description: ARN of the Index-Photos Lambda execution role
+    Value: !GetAtt cfnIndexLambdaRole.Arn
+    Export:
+      Name: cfn-PhotoAlbum-IndexLambdaRoleArn
+
+  SearchLambdaRoleArn:
+    Description: ARN of the Search-Photos Lambda execution role
+    Value: !GetAtt cfnSearchLambdaRole.Arn
+    Export:
+      Name: cfn-PhotoAlbum-SearchLambdaRoleArn
+
+  ApiGatewayS3RoleArn:
+    Description: ARN of the API Gateway → S3 proxy role
+    Value: !GetAtt cfnApiGatewayS3Role.Arn
+    Export:
+      Name: cfn-PhotoAlbum-ApiGatewayS3RoleArn

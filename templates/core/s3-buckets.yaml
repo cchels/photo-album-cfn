@@ -1,13 +1,13 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: S3 buckets: photo storage & frontend hosting
+Description: "S3 buckets: photo storage & frontend hosting"
 
 Parameters:
   PhotoBucketSuffix:
     Type: String
-    Description: Suffix for photo bucket (e.g. "my-photo-bucket-hw3")
+    Description: Suffix for photo bucket (e.g. \"my-photo-bucket-hw3\")
   FrontendBucketSuffix:
     Type: String
-    Description: Suffix for frontend bucket (e.g. "my-frontend-bucket-hw3")
+    Description: Suffix for frontend bucket (e.g. \"my-frontend-bucket-hw3\")
 
 Resources:
   cfnPhotoStorageBucket:
@@ -51,8 +51,9 @@ Resources:
           - Sid: PublicReadGetObject
             Effect: Allow
             Principal: '*'
-            Action: s3:GetObject
-            Resource: !Sub '${cfnFrontendBucket}/*'
+            Action:
+              - s3:GetObject
+            Resource: !Sub 'arn:aws:s3:::${cfnFrontendBucket}/*'
 
 Outputs:
   cfnPhotoBucketName:
