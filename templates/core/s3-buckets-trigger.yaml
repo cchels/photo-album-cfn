@@ -26,6 +26,10 @@ Resources:
         IgnorePublicAcls:      true
         BlockPublicPolicy:     true
         RestrictPublicBuckets: true
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: s3:ObjectCreated:Put
+            Function: !ImportValue cfn-PhotoAlbum-IndexFunctionArn
 
   cfnFrontendBucket:
     Type: AWS::S3::Bucket
@@ -69,3 +73,4 @@ Outputs:
     Value: !GetAtt cfnFrontendBucket.WebsiteURL
     Export:
       Name: cfn-PhotoAlbum-FrontendWebsiteURL
+      

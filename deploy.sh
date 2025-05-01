@@ -93,6 +93,17 @@ aws cloudformation deploy \
       SearchFunctionArn="$SEARCH_FN_ARN"
 echo "✅ API Gateway deployed"
 
+echo "6) Add lambda trigger to S3 bucket…"
+S3_CF="$TEMPLATES_DIR/s3-buckets-trigger.yaml"
+if [ ! -f "$S3_CF" ]; then
+  echo "❌ Cannot find $S3_CF" >&2
+  exit 1
+fi
+aws cloudformation deploy \
+  --stack-name cfn-photoalbum-s3 \
+  --template-file "$S3_CF" \
+  --capabilities CAPABILITY_NAMED_IAM
+echo "✅ S3 buckets deployed"
 
 # ─── Show final endpoints ──────────────────────────────────────────────
 PHOTO_BUCKET=$(aws cloudformation describe-stacks \

@@ -12,6 +12,9 @@ Resources:
         - image/jpg
         - image/jpeg
         - image/heic
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
 
 # ─── SHARED MODELS ─────────────────────────────────────────────────────────
   cfnPhotoModel:
@@ -249,3 +252,4 @@ Outputs:
     Value: !Ref cfnPhotoApi
     Export:
       Name: cfn-PhotoAlbum-ApiId
+      
