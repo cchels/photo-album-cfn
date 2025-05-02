@@ -24,12 +24,26 @@ Resources:
       PublicAccessBlockConfiguration:
         BlockPublicAcls:       true
         IgnorePublicAcls:      true
-        BlockPublicPolicy:     true
-        RestrictPublicBuckets: true
+        BlockPublicPolicy:     false
+        RestrictPublicBuckets: false
       NotificationConfiguration:
         LambdaConfigurations:
           - Event: s3:ObjectCreated:Put
             Function: !ImportValue cfn-PhotoAlbum-IndexFunctionArn
+    
+  cfnPhotoStorageBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref cfnPhotoStorageBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowPublicReadForWebsite
+            Effect: Allow
+            Principal: '*'
+            Action:
+              - s3:GetObject
+            Resource: !Sub 'arn:aws:s3:::${cfnPhotoStorageBucket}/*'
 
   cfnFrontendBucket:
     Type: AWS::S3::Bucket
@@ -54,7 +68,7 @@ Resources:
       PolicyDocument:
         Version: '2012-10-17'
         Statement:
-          - Sid: PublicReadGetObject
+          - Sid: AllowPublicReadForWebsite
             Effect: Allow
             Principal: '*'
             Action:
@@ -73,4 +87,3 @@ Outputs:
     Value: !GetAtt cfnFrontendBucket.WebsiteURL
     Export:
       Name: cfn-PhotoAlbum-FrontendWebsiteURL
-      
